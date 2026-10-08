@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Helmet Detection </title>
+    <title>Helmet Detection</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     <style>
@@ -25,14 +25,13 @@
     <div id="webcam-container"></div>
     <button class="btn" onclick="init()">เปิดกล้องและเริ่มระบบ</button>
     <div id="status-box">กดปุ่มเพื่อเริ่มทำงาน</div>
-    <!-- แสดงจำนวนรูปที่บันทึกไปแล้ว -->
     <div id="log-count">บันทึกภาพไปแล้ว: 0 ภาพ</div>
 </div>
 
 <audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
 
 <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/lGvg1Scey/"; 
+    const URL = "https://teachablemachine.withgoogle.com/models/zeCebPJzA/"; 
 
     let model, webcam, maxPredictions;
     let alarmSound = document.getElementById("alarm");
@@ -40,7 +39,7 @@
     // ตัวแปรสำหรับคุมการถ่ายรูปภาพ
     let lastCaptureTime = 0;
     let captureCount = 0;
-    const CAPTURE_COOLDOWN = 10000;
+    const CAPTURE_COOLDOWN = 10000; // หน่วงเวลา 10 วินาที
 
     // Motion Detection & State Memory Variables
     let prevFrameCtx = null;
@@ -123,9 +122,8 @@
         const prediction = await model.predict(webcam.canvas);
         let noHelmetProb = 0;
         let helmetProb = 0;
-        let backgroundProb = 0;
 
-      for (let i = 0; i < maxPredictions; i++) {
+        for (let i = 0; i < maxPredictions; i++) {
             if (prediction[i].className === "No Helmet") {
                 noHelmetProb = prediction[i].probability;
             } else if (prediction[i].className === "Helmet") {
@@ -136,40 +134,40 @@
         const statusBox = document.getElementById("status-box");
         const currentTime = Date.now();
 
-        if (noHelmetProb > 0.8 && backgroundProb < 0.3) {
-            statusBox.innerHTML = No Helmet⚠️ (${(noHelmetProb * 100).toFixed(0)}%)`;
+        // 1. ตรวจพบไม่สวมหมวก (ความมั่นใจ > 80%)
+        if (noHelmetProb > 0.8) {
+            statusBox.innerHTML = `No Helmet⚠️ (${(noHelmetProb * 100).toFixed(0)}%)`;
             statusBox.className = "alert";
             
             if (alarmSound.paused) {
                 alarmSound.play();
             }
 
-          
             if (currentTime - lastCaptureTime > CAPTURE_COOLDOWN) {
                 captureSnapshot();
                 lastCaptureTime = currentTime;
             }
 
-        } else if (helmetProb > 0.8 && backgroundProb < 0.3) {
-            statusBox.innerHTML = `Waring Helmet ✅`;
+        // 2. ตรวจพบสวมหมวก (ความมั่นใจ > 80%)
+        } else if (helmetProb > 0.8) {
+            statusBox.innerHTML = `Wearing Helmet ✅`;
             statusBox.className = "safe";
+
+        // 3. เป็นสิ่งของทั่วไป หรือความมั่นใจไม่ถึง 80%
         } else {
             statusBox.innerHTML = `Waiting 💤`;
             statusBox.className = "idle";
         }
     }
 
-    // *** ฟังก์ชันถ่ายและดาวน์โหลดรูปอัตโนมัติลงเครื่อง ***
     function captureSnapshot() {
         const canvas = webcam.canvas;
         const imageBase64 = canvas.toDataURL("image/jpeg");
         
-        // ตั้งชื่อไฟล์ตาม วัน-เวลา ที่ตรวจพบ
         const now = new Date();
         const timestamp = now.toISOString().replace(/[:.]/g, "-");
         const fileName = `no-helmet_${timestamp}.jpg`;
 
-        // สร้างลิงก์ดาวน์โหลดชั่วคราวแล้วสั่งคลิกอัตโนมัติ
         const a = document.createElement("a");
         a.href = imageBase64;
         a.download = fileName;
