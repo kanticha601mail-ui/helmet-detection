@@ -1,35 +1,3 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Helmet Detection</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #f0f2f5; margin: 0; padding: 20px; }
-        .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        #webcam-container { margin: 15px 0; overflow: hidden; border-radius: 12px; background: #000; display: inline-block; }
-        .btn { background: #007bff; color: white; border: none; padding: 14px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; }
-        #status-box { font-size: 18px; font-weight: bold; margin-top: 15px; padding: 12px; border-radius: 8px; background: #e9ecef; }
-        .alert { background: #ffe3e3 !important; color: #dc3545 !important; border: 1px solid #dc3545; }
-        .safe { background: #d4edda !important; color: #28a745 !important; border: 1px solid #28a745; }
-        .idle { background: #e2e3e5 !important; color: #383d41 !important; }
-        #log-count { margin-top: 10px; font-size: 14px; color: #6c757d; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h2>Helmet Detection</h2>
-    <div id="webcam-container"></div>
-    <button class="btn" onclick="init()">เปิดกล้องและเริ่มระบบ</button>
-    <div id="status-box">กดปุ่มเพื่อเริ่มทำงาน</div>
-    <div id="log-count">บันทึกภาพไปแล้ว: 0 ภาพ</div>
-</div>
-
-<audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
-
 <script>
     const URL = "https://teachablemachine.withgoogle.com/models/lGvg1Scey/"; 
 
@@ -45,13 +13,19 @@
     let prevFrameCtx = null;
     let prevFrameCanvas = null;
     let lastMotionTime = 0; 
-    const HOLD_STATE_DURATION = 3000;
+    const HOLD_STATE_DURATION = 3000; // คงสถานะตรวจจับไว้ 3 วินาทีหลังการเคลื่อนไหวหยุดลง
 
     async function init() {
         const modelURL = URL + "model.json";
         const metadataURL = URL + "metadata.json";
 
         document.getElementById("status-box").innerText = "กำลังโหลดโมเดล...";
+
+        // ปลดล็อกการเล่นเสียง Alarm บนเบราว์เซอร์
+        alarmSound.play().then(() => {
+            alarmSound.pause();
+            alarmSound.currentTime = 0;
+        }).catch(() => {});
 
         model = await tmImage.load(modelURL, metadataURL);
         maxPredictions = model.getTotalClasses();
@@ -80,12 +54,15 @@
 
         if (isMoving) {
             lastMotionTime = currentTime;
+        }
+
+        // ตรวจสอบว่ายังมี Motion อยู่ หรือเพิ่งหยุดเคลื่อนไหวไม่เกิน 3 วินาทีหรือไม่
+        if (currentTime - lastMotionTime < HOLD_STATE_DURATION && lastMotionTime !== 0) {
             await predict();
         } else {
-            if (lastMotionTime === 0 || (currentTime - lastMotionTime >= HOLD_STATE_DURATION)) {
-                statusBox.innerHTML = `Waiting 💤`;
-                statusBox.className = "idle";
-            }
+            // หากไม่มีการเคลื่อนไหวเกิน 3 วินาที ให้บังคับเป็นสถานะ Waiting
+            statusBox.innerHTML = `Waiting 💤`;
+            statusBox.className = "idle";
         }
 
         window.requestAnimationFrame(loop);
@@ -121,13 +98,16 @@
     async function predict() {
         const prediction = await model.predict(webcam.canvas);
         let noHelmetProb = 0;
-        let helmetProb = 0;
+        let wearingHelmetProb = 0;
 
+        // ดึงค่าตามชื่อ Class "No Helmet" และ "Wearing Helmet"
         for (let i = 0; i < maxPredictions; i++) {
-            if (prediction[i].className === "No Helmet") {
+            const className = prediction[i].className.trim().toLowerCase();
+            
+            if (className === "no helmet") {
                 noHelmetProb = prediction[i].probability;
-            } else if (prediction[i].className === "Helmet") {
-                helmetProb = prediction[i].probability;
+            } else if (className === "wearing helmet" || className === "helmet") {
+                wearingHelmetProb = prediction[i].probability;
             }
         }
 
@@ -136,11 +116,11 @@
 
         // 1. ตรวจพบไม่สวมหมวก (ความมั่นใจ > 80%)
         if (noHelmetProb > 0.8) {
-            statusBox.innerHTML = `No Helmet⚠️ (${(noHelmetProb * 100).toFixed(0)}%)`;
+            statusBox.innerHTML = `No Helmet ⚠️ (${(noHelmetProb * 100).toFixed(0)}%)`;
             statusBox.className = "alert";
             
             if (alarmSound.paused) {
-                alarmSound.play();
+                alarmSound.play().catch(() => {});
             }
 
             if (currentTime - lastCaptureTime > CAPTURE_COOLDOWN) {
@@ -149,11 +129,11 @@
             }
 
         // 2. ตรวจพบสวมหมวก (ความมั่นใจ > 80%)
-        } else if (helmetProb > 0.8) {
-            statusBox.innerHTML = `Wearing Helmet ✅`;
+        } else if (wearingHelmetProb > 0.8) {
+            statusBox.innerHTML = `Wearing Helmet ✅ (${(wearingHelmetProb * 100).toFixed(0)}%)`;
             statusBox.className = "safe";
 
-        // 3. เป็นสิ่งของทั่วไป หรือความมั่นใจไม่ถึง 80%
+        // 3. ผลก้ำกึ่ง (เช่น < 80%)
         } else {
             statusBox.innerHTML = `Waiting 💤`;
             statusBox.className = "idle";
@@ -179,5 +159,3 @@
         document.getElementById("log-count").innerText = `บันทึกภาพไปแล้ว: ${captureCount} ภาพ`;
     }
 </script>
-</body>
-</html>
